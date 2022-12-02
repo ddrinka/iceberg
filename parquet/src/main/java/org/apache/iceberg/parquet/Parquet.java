@@ -45,6 +45,8 @@ import static org.apache.iceberg.TableProperties.PARQUET_ROW_GROUP_CHECK_MIN_REC
 import static org.apache.iceberg.TableProperties.PARQUET_ROW_GROUP_CHECK_MIN_RECORD_COUNT_DEFAULT;
 import static org.apache.iceberg.TableProperties.PARQUET_ROW_GROUP_SIZE_BYTES;
 import static org.apache.iceberg.TableProperties.PARQUET_ROW_GROUP_SIZE_BYTES_DEFAULT;
+import static org.apache.iceberg.TableProperties.PARQUET_VERSION;
+import static org.apache.iceberg.TableProperties.PARQUET_VERSION_DEFAULT;
 
 import java.io.File;
 import java.io.IOException;
@@ -129,7 +131,6 @@ public class Parquet {
     private Function<MessageType, ParquetValueWriter<?>> createWriterFunc = null;
     private MetricsConfig metricsConfig = MetricsConfig.getDefault();
     private ParquetFileWriter.Mode writeMode = ParquetFileWriter.Mode.CREATE;
-    private WriterVersion writerVersion = WriterVersion.PARQUET_1_0;
     private Function<Map<String, String>, Context> createContextFunc = Context::dataContext;
 
     private WriteBuilder(OutputFile file) {
@@ -199,7 +200,8 @@ public class Parquet {
     }
 
     public WriteBuilder writerVersion(WriterVersion version) {
-      this.writerVersion = version;
+      //Keeping for backwards compatability
+      config.put(PARQUET_VERSION, version.toString());
       return this;
     }
 
@@ -213,15 +215,6 @@ public class Parquet {
             ParquetAvro.parquetAvroSchema(AvroSchemaUtil.convert(schema, name)),
             ParquetAvro.DEFAULT_MODEL);
       }
-    }
-
-    /*
-     * Sets the writer version. Default value is PARQUET_1_0 (v1).
-     */
-    @VisibleForTesting
-    WriteBuilder withWriterVersion(WriterVersion version) {
-      this.writerVersion = version;
-      return this;
     }
 
     // supposed to always be a private method used strictly by data and delete write builders
@@ -251,6 +244,7 @@ public class Parquet {
       int rowGroupCheckMaxRecordCount = context.rowGroupCheckMaxRecordCount();
       int bloomFilterMaxBytes = context.bloomFilterMaxBytes();
       Map<String, String> columnBloomFilterEnabled = context.columnBloomFilterEnabled();
+      WriterVersion writerVersion = context.writerVersion();
 
       if (compressionLevel != null) {
         switch (codec) {
@@ -346,6 +340,7 @@ public class Parquet {
       private final int rowGroupCheckMaxRecordCount;
       private final int bloomFilterMaxBytes;
       private final Map<String, String> columnBloomFilterEnabled;
+      private final WriterVersion writerVersion;
 
       private Context(
           int rowGroupSize,
@@ -357,7 +352,8 @@ public class Parquet {
           int rowGroupCheckMinRecordCount,
           int rowGroupCheckMaxRecordCount,
           int bloomFilterMaxBytes,
-          Map<String, String> columnBloomFilterEnabled) {
+          Map<String, String> columnBloomFilterEnabled,
+          WriterVersion writerVersion) {
         this.rowGroupSize = rowGroupSize;
         this.pageSize = pageSize;
         this.pageRowLimit = pageRowLimit;
@@ -368,6 +364,7 @@ public class Parquet {
         this.rowGroupCheckMaxRecordCount = rowGroupCheckMaxRecordCount;
         this.bloomFilterMaxBytes = bloomFilterMaxBytes;
         this.columnBloomFilterEnabled = columnBloomFilterEnabled;
+        this.writerVersion = writerVersion;
       }
 
       static Context dataContext(Map<String, String> config) {
@@ -425,6 +422,10 @@ public class Parquet {
         Map<String, String> columnBloomFilterEnabled =
             PropertyUtil.propertiesWithPrefix(config, PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX);
 
+        String writerVersionAsString =
+            config.getOrDefault(PARQUET_VERSION, PARQUET_VERSION_DEFAULT);
+        WriterVersion writerVersion = toWriterVersion(writerVersionAsString);
+
         return new Context(
             rowGroupSize,
             pageSize,
@@ -435,7 +436,8 @@ public class Parquet {
             rowGroupCheckMinRecordCount,
             rowGroupCheckMaxRecordCount,
             bloomFilterMaxBytes,
-            columnBloomFilterEnabled);
+            columnBloomFilterEnabled,
+            writerVersion);
       }
 
       static Context deleteContext(Map<String, String> config) {
@@ -496,6 +498,10 @@ public class Parquet {
         Map<String, String> columnBloomFilterEnabled =
             PropertyUtil.propertiesWithPrefix(config, PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX);
 
+        String writerVersionAsString =
+            config.getOrDefault(DELETE_PARQUET_VERSION, PARQUET_VERSION_DEFAULT);
+        WriterVersion writerVersion = toWriterVersion(writerVersionAsString);
+
         return new Context(
             rowGroupSize,
             pageSize,
@@ -506,7 +512,8 @@ public class Parquet {
             rowGroupCheckMinRecordCount,
             rowGroupCheckMaxRecordCount,
             bloomFilterMaxBytes,
-            columnBloomFilterEnabled);
+            columnBloomFilterEnabled,
+            writerVersion);
       }
 
       private static CompressionCodecName toCodec(String codecAsString) {
@@ -514,6 +521,14 @@ public class Parquet {
           return CompressionCodecName.valueOf(codecAsString.toUpperCase(Locale.ENGLISH));
         } catch (IllegalArgumentException e) {
           throw new IllegalArgumentException("Unsupported compression codec: " + codecAsString);
+        }
+      }
+
+      private static WriterVersion toWriterVersion(String writerVersionAsString) {
+        try {
+          return WriterVersion.fromString(writerVersionAsString);
+        } catch (IllegalArgumentException) {
+          throw new IllegalArgumentException("Unsupported Parquet version: " + writerVersionAsString);
         }
       }
 
@@ -555,6 +570,10 @@ public class Parquet {
 
       Map<String, String> columnBloomFilterEnabled() {
         return columnBloomFilterEnabled;
+      }
+
+      WriterVersion writerVersion() {
+        return writerVersion;
       }
     }
   }

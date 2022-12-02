@@ -58,6 +58,7 @@ Iceberg tables support table properties to configure table behavior, like the de
 | write.parquet.compression-level    | null               | Parquet compression level                          |
 | write.parquet.bloom-filter-enabled.column.col1          | (not set) | Enables writing a bloom filter for the column: col1|
 | write.parquet.bloom-filter-max-bytes | 1048576 (1 MB)   | The maximum number of bytes for a bloom filter bitset |
+| write.parquet.version              | v1                 | Parquet format version                             |
 | write.avro.compression-codec       | gzip               | Avro compression codec: gzip(deflate with 9 level), zstd, snappy, uncompressed |
 | write.avro.compression-level       | null               | Avro compression level                             |
 | write.orc.stripe-size-bytes        | 67108864 (64 MB)   | Define the default ORC stripe size, in bytes       |
